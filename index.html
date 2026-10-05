@@ -1,1 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>2048 Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            background-color: #faf8ef;
+            color: #776e65;
+        }
 
+        /* 盤面全体（縦横比 1:1 を厳密に保持） */
+        #board-container {
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1 / 1;
+            position: relative;
+            background-color: #bbada0;
+            border-radius: 0.5rem;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+
+        /* 背景のグレー格子 */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 12px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .grid-cell {
+            background-color: rgba(238, 228, 218, 0.35);
+            border-radius: 0.375rem;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* タイル配置レイヤー（背景と同じGrid構造にしてズレをゼロにする） */
+        .tile-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 12px;
+            box-sizing: border-box;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(4, 1fr);
+            gap: 12px;
+            pointer-events: none;
+        }
+
+        /* 動く数字タイル */
+        .tile {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            border-radius: 0.375rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            transition: all 100ms ease-in-out;
+        }
+
+        /* 各数字の色指定 */
+        .tile-2 { background-color: #eee4da; color: #776e65; font-size: 2.2rem; }
+        .tile-4 { background-color: #ede0c8; color: #776e65; font-size: 2.2rem; }
+        .tile-8 { background-color: #f2b179; color: #f9f6f2; font-size: 2.2rem; }
+        .tile-16 { background-color: #f59563; color: #f9f6f2; font-size: 1.9rem; }
+        .tile-32 { background-color: #f67c5f; color: #f9f6f2; font-size: 1.9rem; }
+        .tile-64 { background-color: #f65e3b; color: #f9f6f2; font-size: 1.9rem; }
+        .tile-128 { background-color: #edcf72; color: #f9f6f2; font-size: 1.6rem; box-shadow: 0 0 10px rgba(237,207,114,0.5); }
+        .tile-256 { background-color: #edcc61; color: #f9f6f2; font-size: 1.6rem; box-shadow: 0 0 10px rgba(237,204,97,0.5); }
+        .tile-512 { background-color: #edc850; color: #f9f6f2; font-size: 1.6rem; box-shadow: 0 0 10px rgba(237,200,80,0.5); }
+        .tile-1024 { background-color: #edc53f; color: #f9f6f2; font-size: 1.3rem; box-shadow: 0 0 15px rgba(237,197,63,0.6); }
+        .tile-2048 { background-color: #edc22e; color: #f9f6f2; font-size: 1.3rem; box-shadow: 0 0 20px rgba(237,194,46,0.8); }
+        .tile-super { background-color: #3c3a32; color: #f9f6f2; font-size: 1.1rem; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between min-h-screen p-4 max-w-md mx-auto">
+
+    <!-- ヘッダー領域 -->
+    <header class="w-full flex justify-between items-center mt-2 mb-4">
+        <div>
+            <h1 class="text-5xl font-extrabold text-[#776e65] tracking-tight">2048</h1>
+            <p class="text-xs text-[#776e65] font-semibold mt-1">Join tiles to get <span class="font-bold">2048!</span></p>
+        </div>
+        
+        <div class="flex gap-2">
+            <div class="bg-[#bbada0] text-white px-3 py-2 rounded-md text-center min-w-[65px]">
+                <div class="text-[10px] font-bold text-[#eee4da] uppercase tracking-wider">SCORE</div>
+                <div id="score" class="text-lg font-bold">0</div>
+            </div>
+            <div class="bg-[#bbada0] text-white px-3 py-2 rounded-md text-center min-w-[65px]">
+                <div class="text-[10px] font-bold text-[#eee4da] uppercase tracking-wider">BEST</div>
+                <div id="best-score" class="text-lg font-bold">0</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 操作ボタン -->
+    <div class="w-full flex justify-end mb-4">
+        <button id="new-game-btn" class="bg-[#8f7a66] hover:bg-[#9f8a76] text-white font-bold py-2 px-4 rounded-md transition duration-150 text-sm shadow">
+            New Game
+        </button>
+    </div>
+
+    <!-- ゲーム盤面 -->
+    <main id="board-container">
+        <!-- 背景の16マス -->
+        <div class="grid-container">
+            <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+            <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+            <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+            <div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div><div class="grid-cell"></div>
+        </div>
+        <!-- 動くタイルを入れるコンテナ -->
+        <div id="tile-container" class="tile-container"></div>
+    </main>
+
+    <!-- 説明メッセージ -->
+    <footer class="w-full text-center my-6 text-xs text-[#776e65] leading-relaxed">
+        <p><span class="font-bold">How to play:</span> Swipe or use Arrow Keys to move tiles. Matching tiles merge into one!</p>
+    </footer>
+
+    <!-- JavaScript プログラム -->
+    <script>
+        class Game2048 {
+            constructor() {
+                this.gridSize = 4;
+                this.board = Array(4).fill(null).map(() => Array(4).fill(0));
+                this.score = 0;
+                this.bestScore = parseInt(localStorage.getItem('2048_best') || '0', 10);
+                this.tileContainer = document.getElementById('tile-container');
+                this.scoreElem = document.getElementById('score');
+                this.bestScoreElem = document.getElementById('best-score');
+
+                this.init();
+            }
+
+            init() {
+                this.bestScoreElem.textContent = this.bestScore;
+                this.setupEventListeners();
+                this.startNewGame();
+            }
+
+            startNewGame() {
+                this.board = Array(4).fill(null).map(() => Array(4).fill(0));
+                this.score = 0;
+                this.updateScore(0);
+                
+                this.addRandomTile();
+                this.addRandomTile();
+                this.render();
+            }
+
+            addRandomTile() {
+                const emptyCells = [];
+                for (let r = 0; r < 4; r++) {
+                    for (let c = 0; c < 4; c++) {
+                        if (this.board[r][c] === 0) {
+                            emptyCells.push({ r, c });
+                        }
+                    }
+                }
+                if (emptyCells.length > 0) {
+                    const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                    this.board[r][c] = Math.random() < 0.9 ? 2 : 4;
+                }
+            }
+
+            updateScore(amount) {
+                this.score += amount;
+                this.scoreElem.textContent = this.score;
+                if (this.score > this.bestScore) {
+                    this.bestScore = this.score;
+                    this.bestScoreElem.textContent = this.bestScore;
+                    localStorage.setItem('2048_best', this.bestScore);
+                }
+            }
+
+            render() {
+                this.tileContainer.innerHTML = '';
+
+                for (let r = 0; r < 4; r++) {
+                    for (let c = 0; c < 4; c++) {
+                        const val = this.board[r][c];
+                        if (val !== 0) {
+                            const tile = document.createElement('div');
+                            const colorClass = val <= 2048 ? `tile-${val}` : 'tile-super';
+                            tile.className = `tile ${colorClass}`;
+                            tile.textContent = val;
+                            
+                            // CSS Gridのマス目指定 (1〜4)
+                            tile.style.gridRowStart = r + 1;
+                            tile.style.gridColumnStart = c + 1;
+
+                            this.tileContainer.appendChild(tile);
+                        }
+                    }
+                }
+            }
+
+            // 移動ロジック： direction - 0: Up, 1: Right, 2: Down, 3: Left
+            move(direction) {
+                let moved = false;
+                let scoreGained = 0;
+
+                const rotate = (b) => {
+                    const res = Array(4).fill(null).map(() => Array(4).fill(0));
+                    for (let r = 0; r < 4; r++) {
+                        for (let c = 0; c < 4; c++) {
+                            res[c][3 - r] = b[r][c];
+                        }
+                    }
+                    return res;
+                };
+
+                const slideLeft = (b) => {
+                    let newBoard = [];
+                    for (let r = 0; r < 4; r++) {
+                        let row = b[r].filter(val => val !== 0);
+                        for (let c = 0; c < row.length - 1; c++) {
+                            if (row[c] === row[c + 1]) {
+                                row[c] *= 2;
+                                scoreGained += row[c];
+                                row.splice(c + 1, 1);
+                                moved = true;
+                            }
+                        }
+                        while (row.length < 4) {
+                            row.push(0);
+                        }
+                        if (JSON.stringify(b[r]) !== JSON.stringify(row)) {
+                            moved = true;
+                        }
+                        newBoard.push(row);
+                    }
+                    return newBoard;
+                };
+
+                let tempBoard = JSON.parse(JSON.stringify(this.board));
+
+                const rotationsNeeded = (4 - (direction - 3)) % 4;
+                for (let i = 0; i < rotationsNeeded; i++) {
+                    tempBoard = rotate(tempBoard);
+                }
+
+                tempBoard = slideLeft(tempBoard);
+
+                const reverseRotations = (4 - rotationsNeeded) % 4;
+                for (let i = 0; i < reverseRotations; i++) {
+                    tempBoard = rotate(tempBoard);
+                }
+
+                if (moved) {
+                    this.board = tempBoard;
+                    this.updateScore(scoreGained);
+                    this.addRandomTile();
+                    this.render();
+
+                    if (this.checkGameOver()) {
+                        setTimeout(() => alert('Game Over!'), 300);
+                    }
+                }
+            }
+
+            checkGameOver() {
+                for (let r = 0; r < 4; r++) {
+                    for (let c = 0; c < 4; c++) {
+                        if (this.board[r][c] === 0) return false;
+                        if (c < 3 && this.board[r][c] === this.board[r][c + 1]) return false;
+                        if (r < 3 && this.board[r][c] === this.board[r + 1][c]) return false;
+                    }
+                }
+                return true;
+            }
+
+            setupEventListeners() {
+                // キーボード操作（PC用）
+                window.addEventListener('keydown', (e) => {
+                    switch (e.key) {
+                        case 'ArrowUp': e.preventDefault(); this.move(0); break;
+                        case 'ArrowRight': e.preventDefault(); this.move(1); break;
+                        case 'ArrowDown': e.preventDefault(); this.move(2); break;
+                        case 'ArrowLeft': e.preventDefault(); this.move(3); break;
+                    }
+                });
+
+                // スワイプ操作（スマホ用）
+                let startX = 0, startY = 0;
+                const boardContainer = document.getElementById('board-container');
+
+                boardContainer.addEventListener('touchstart', (e) => {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                }, { passive: true });
+
+                boardContainer.addEventListener('touchend', (e) => {
+                    if (!startX || !startY) return;
+
+                    const endX = e.changedTouches[0].clientX;
+                    const endY = e.changedTouches[0].clientY;
+
+                    const diffX = endX - startX;
+                    const diffY = endY - startY;
+
+                    const minSwipeDistance = 30;
+
+                    if (Math.max(Math.abs(diffX), Math.abs(diffY)) > minSwipeDistance) {
+                        if (Math.abs(diffX) > Math.abs(diffY)) {
+                            if (diffX > 0) this.move(1); // 右
+                            else this.move(3);          // 左
+                        } else {
+                            if (diffY > 0) this.move(2); // 下
+                            else this.move(0);          // 上
+                        }
+                    }
+
+                    startX = 0;
+                    startY = 0;
+                }, { passive: true });
+
+                // リセットボタン
+                document.getElementById('new-game-btn').addEventListener('click', () => {
+                    this.startNewGame();
+                });
+            }
+        }
+
+        // ゲーム起動
+        window.addEventListener('DOMContentLoaded', () => {
+            new Game2048();
+        });
+    </script>
+</body>
+</html>
